@@ -1,13 +1,19 @@
 from sqlalchemy.orm import Session
 
+from app.events.publisher import publish_room_activated
 from app.models import Room
 from app.repositories.room_repo import (
     create_room,
     delete_room,
     find_available_waiting_room,
     find_user_waiting_room,
+    get_all_rooms,
     get_room_by_id,
 )
+
+
+def get_rooms(db: Session) -> list[Room]:
+    return get_all_rooms(db)
 
 
 def create_new_room(db: Session, user_id: int) -> tuple[Room, bool]:
@@ -36,6 +42,8 @@ def quick_join_or_create_room(db: Session, user_id: int) -> Room:
     db.commit()
     db.refresh(available_room)
 
+    publish_room_activated(available_room.id, available_room.white_player_id, available_room.black_player_id)
+
     return available_room
 
 
@@ -46,6 +54,29 @@ def get_room(db: Session, room_id: int) -> Room:
         raise ValueError("Room not found")
 
     return room
+
+
+def join_room(db: Session, room_id: int, user_id: int) -> tuple[Room, str]:
+    room = get_room_by_id(db, room_id)
+
+    if room is None:
+        raise ValueError("Room not found")
+
+    if room.white_player_id == user_id or room.black_player_id == user_id:
+        return room, "player"
+
+    if room.status == "waiting":
+        room.black_player_id = user_id
+        room.status = "active"
+        db.commit()
+        db.refresh(room)
+        publish_room_activated(room.id, room.white_player_id, room.black_player_id)
+        return room, "player"
+
+    if room.status == "active":
+        return room, "spectator"
+
+    raise ValueError("Room is not available")
 
 
 def leave_room(db: Session, room_id: int, user_id: int) -> str:
@@ -74,15 +105,12 @@ def leave_room(db: Session, room_id: int, user_id: int) -> str:
     return "Left room successfully"
 
 
-def close_room(db: Session, room_id: int) -> Room:
+def close_room(db: Session, room_id: int) -> str:
     room = get_room_by_id(db, room_id)
 
     if room is None:
         raise ValueError("Room not found")
 
-    room.status = "closed"
+    delete_room(db, room)
 
-    db.commit()
-    db.refresh(room)
-
-    return room
+    return "Room closed"

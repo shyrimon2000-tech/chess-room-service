@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -14,6 +15,10 @@ class RoomResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+
+class JoinRoomResponse(RoomResponse):
+    role: Literal["player", "spectator"]
 
 
 class MessageResponse(BaseModel):

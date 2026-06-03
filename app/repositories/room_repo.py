@@ -41,6 +41,14 @@ def find_available_waiting_room(db: Session, user_id: int) -> Room | None:
     )
 
 
+def get_all_rooms(db: Session) -> list[Room]:
+    return (
+        db.query(Room)
+        .filter(Room.status.in_(["waiting", "active"]))
+        .all()
+    )
+
+
 def delete_room(db: Session, room: Room) -> None:
     db.delete(room)
     db.commit()
