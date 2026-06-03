@@ -7,5 +7,3 @@ pydantic==2.13.4
 pydantic-settings==2.14.1
 python-jose==3.5.0
 redis==7.4.0
-pytest==9.0.3
-httpx==0.28.1
