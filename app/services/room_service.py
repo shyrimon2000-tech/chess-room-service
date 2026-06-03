@@ -10,13 +10,13 @@ from app.repositories.room_repo import (
 )
 
 
-def create_new_room(db: Session, user_id: int) -> Room:
+def create_new_room(db: Session, user_id: int) -> tuple[Room, bool]:
     existing_waiting_room = find_user_waiting_room(db, user_id)
 
     if existing_waiting_room is not None:
-        return existing_waiting_room
+        return existing_waiting_room, False
 
-    return create_room(db, user_id)
+    return create_room(db, user_id), True
 
 
 def quick_join_or_create_room(db: Session, user_id: int) -> Room:
@@ -39,7 +39,7 @@ def quick_join_or_create_room(db: Session, user_id: int) -> Room:
     return available_room
 
 
-def get_room_for_spectate(db: Session, room_id: int) -> Room:
+def get_room(db: Session, room_id: int) -> Room:
     room = get_room_by_id(db, room_id)
 
     if room is None:

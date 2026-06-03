@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -7,7 +7,7 @@ from app.services.auth_dependencies import CurrentUser, get_current_user, requir
 from app.services.room_service import (
     close_room,
     create_new_room,
-    get_room_for_spectate,
+    get_room,
     leave_room,
     quick_join_or_create_room,
 )
@@ -21,10 +21,14 @@ router = APIRouter(
 
 @router.post("", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
 def create_room_endpoint(
+    response: Response,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    return create_new_room(db, current_user.id)
+    room, created = create_new_room(db, current_user.id)
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return room
 
 
 @router.post("/quick", response_model=RoomResponse)
@@ -42,22 +46,7 @@ def get_room_endpoint(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     try:
-        return get_room_for_spectate(db, room_id)
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(error),
-        )
-
-
-@router.get("/{room_id}/spectate", response_model=RoomResponse)
-def spectate_room_endpoint(
-    room_id: int,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    try:
-        return get_room_for_spectate(db, room_id)
+        return get_room(db, room_id)
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
