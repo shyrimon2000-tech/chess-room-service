@@ -49,6 +49,12 @@ def reset_overrides():
     app.dependency_overrides[get_db] = override_get_db
 
 
+@pytest.fixture(autouse=True)
+def mock_publish_room_created():
+    with patch("app.services.room_service.publish_room_created"):
+        yield
+
+
 # --- GET /rooms ---
 
 def test_get_rooms_empty():
