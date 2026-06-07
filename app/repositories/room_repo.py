@@ -49,6 +49,13 @@ def get_all_rooms(db: Session) -> list[Room]:
     )
 
 
+def save_room(db: Session, room: Room) -> Room:
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    return room
+
+
 def delete_room(db: Session, room: Room) -> None:
     db.delete(room)
     db.commit()
