@@ -6,9 +6,11 @@ __pycache__/
 .pytest_cache/
 *.db
 .idea/
+.git/
 *.egg-info/
 dist/
 build/
 .DS_Store
+tests/
 .auth.env
 ex.docker-compose.yml
