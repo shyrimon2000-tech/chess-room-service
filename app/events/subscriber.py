@@ -1,5 +1,7 @@
 import json
 import logging
+import threading
+import time
 
 import redis
 
@@ -51,8 +53,18 @@ def _handle_message(message):
         db.close()
 
 
+def _subscriber_loop():
+    while True:
+        try:
+            client = redis.from_url(settings.REDIS_URL)
+            pubsub = client.pubsub()
+            pubsub.subscribe("game_events")
+            for message in pubsub.listen():
+                _handle_message(message)
+        except Exception:
+            logger.exception("Subscriber connection lost, reconnecting in 1s")
+            time.sleep(1)
+
+
 def start_subscriber():
-    client = redis.from_url(settings.REDIS_URL)
-    pubsub = client.pubsub()
-    pubsub.subscribe(**{"game_events": _handle_message})
-    pubsub.run_in_thread(sleep_time=0.01, daemon=True)
+    threading.Thread(target=_subscriber_loop, daemon=True).start()
