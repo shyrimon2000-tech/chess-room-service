@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.events.publisher import publish_room_activated
+from app.events.publisher import publish_room_activated, publish_room_created
 from app.models import Room
 from app.repositories.room_repo import (
     create_room,
@@ -22,7 +22,9 @@ def create_new_room(db: Session, user_id: int) -> tuple[Room, bool]:
     if existing_waiting_room is not None:
         return existing_waiting_room, False
 
-    return create_room(db, user_id), True
+    room = create_room(db, user_id)
+    publish_room_created(room.id, room.white_player_id)
+    return room, True
 
 
 def quick_join_or_create_room(db: Session, user_id: int) -> Room:
@@ -34,7 +36,9 @@ def quick_join_or_create_room(db: Session, user_id: int) -> Room:
     available_room = find_available_waiting_room(db, user_id)
 
     if available_room is None:
-        return create_room(db, user_id)
+        room = create_room(db, user_id)
+        publish_room_created(room.id, room.white_player_id)
+        return room
 
     available_room.black_player_id = user_id
     available_room.status = "active"
