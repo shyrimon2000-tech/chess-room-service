@@ -24,6 +24,22 @@ services:
 
     stop_grace_period: 30s
 
+  room-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+    networks:
+      - chess_room_internal
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    stop_grace_period: 10s
+
   room-service:
     build:
       context: .
@@ -39,6 +55,8 @@ services:
 
     depends_on:
       room-db:
+        condition: service_healthy
+      room-redis:
         condition: service_healthy
 
     networks:
