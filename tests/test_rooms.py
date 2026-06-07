@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from app.main import app
 from app.database import get_db
-from app.models import Base
+from app.models import Base, Room
 from app.services.auth_dependencies import CurrentUser, get_current_user
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -71,6 +71,29 @@ def test_get_rooms_returns_waiting_room():
     assert r.json()[0]["status"] == "waiting"
 
 
+@patch("app.services.room_service.publish_room_activated")
+def test_get_rooms_returns_active_room(mock_publish):
+    room = make_client(1).post("/rooms").json()
+    make_client(2).post(f"/rooms/{room['id']}/join")
+    r = make_client(1).get("/rooms")
+    assert r.status_code == 200
+    assert any(room["status"] == "active" for room in r.json())
+
+
+def test_get_rooms_excludes_finished_rooms():
+    room_data = make_client(1).post("/rooms").json()
+    db = TestingSessionLocal()
+    try:
+        room = db.query(Room).filter(Room.id == room_data["id"]).first()
+        room.status = "finished"
+        db.commit()
+    finally:
+        db.close()
+    r = make_client(1).get("/rooms")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
 # --- POST /rooms ---
 
 def test_create_room_returns_201():
@@ -86,6 +109,21 @@ def test_create_room_existing_returns_200():
     make_client(1).post("/rooms")
     r = make_client(1).post("/rooms")
     assert r.status_code == 200
+
+
+@patch("app.services.room_service.publish_room_created")
+def test_create_room_publishes_room_created(mock_publish):
+    r = make_client(1).post("/rooms")
+    data = r.json()
+    mock_publish.assert_called_once_with(data["id"], 1)
+
+
+@patch("app.services.room_service.publish_room_created")
+def test_create_room_existing_does_not_publish(mock_publish):
+    make_client(1).post("/rooms")
+    mock_publish.reset_mock()
+    make_client(1).post("/rooms")
+    mock_publish.assert_not_called()
 
 
 # --- GET /rooms/{room_id} ---
@@ -132,6 +170,13 @@ def test_quick_join_returns_own_waiting_room(mock_publish):
     mock_publish.assert_not_called()
 
 
+@patch("app.services.room_service.publish_room_created")
+def test_quick_join_new_room_publishes_room_created(mock_publish):
+    r = make_client(1).post("/rooms/quick")
+    data = r.json()
+    mock_publish.assert_called_once_with(data["id"], 1)
+
+
 # --- POST /rooms/{room_id}/join ---
 
 @patch("app.services.room_service.publish_room_activated")
@@ -168,6 +213,28 @@ def test_join_room_not_found():
     assert r.status_code == 400
 
 
+@patch("app.services.room_service.publish_room_activated")
+def test_join_own_active_room_as_black_returns_player(mock_publish):
+    room = make_client(1).post("/rooms").json()
+    make_client(2).post(f"/rooms/{room['id']}/join")
+    r = make_client(2).post(f"/rooms/{room['id']}/join")
+    assert r.status_code == 200
+    assert r.json()["role"] == "player"
+
+
+def test_join_finished_room_returns_400():
+    room_data = make_client(1).post("/rooms").json()
+    db = TestingSessionLocal()
+    try:
+        room = db.query(Room).filter(Room.id == room_data["id"]).first()
+        room.status = "finished"
+        db.commit()
+    finally:
+        db.close()
+    r = make_client(2).post(f"/rooms/{room_data['id']}/join")
+    assert r.status_code == 400
+
+
 # --- POST /rooms/{room_id}/leave ---
 
 def test_leave_waiting_room():
@@ -195,6 +262,11 @@ def test_leave_active_room_returns_400(mock_publish):
 def test_leave_room_not_player_returns_400():
     room = make_client(1).post("/rooms").json()
     r = make_client(2).post(f"/rooms/{room['id']}/leave")
+    assert r.status_code == 400
+
+
+def test_leave_room_not_found():
+    r = make_client(1).post("/rooms/999/leave")
     assert r.status_code == 400
 
 
