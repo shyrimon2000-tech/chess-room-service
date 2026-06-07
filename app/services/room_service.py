@@ -23,6 +23,7 @@ def create_new_room(db: Session, user_id: int) -> tuple[Room, bool]:
         return existing_waiting_room, False
 
     room = create_room(db, user_id)
+    assert room.white_player_id is not None
     publish_room_created(room.id, room.white_player_id)
     return room, True
 
@@ -37,6 +38,7 @@ def quick_join_or_create_room(db: Session, user_id: int) -> Room:
 
     if available_room is None:
         room = create_room(db, user_id)
+        assert room.white_player_id is not None
         publish_room_created(room.id, room.white_player_id)
         return room
 
@@ -46,7 +48,13 @@ def quick_join_or_create_room(db: Session, user_id: int) -> Room:
     db.commit()
     db.refresh(available_room)
 
-    publish_room_activated(available_room.id, available_room.white_player_id, available_room.black_player_id)
+    assert available_room.white_player_id is not None
+    assert available_room.black_player_id is not None
+    publish_room_activated(
+        available_room.id,
+        available_room.white_player_id,
+        available_room.black_player_id,
+    )
 
     return available_room
 
@@ -74,6 +82,8 @@ def join_room(db: Session, room_id: int, user_id: int) -> tuple[Room, str]:
         room.status = "active"
         db.commit()
         db.refresh(room)
+        assert room.white_player_id is not None
+        assert room.black_player_id is not None
         publish_room_activated(room.id, room.white_player_id, room.black_player_id)
         return room, "player"
 

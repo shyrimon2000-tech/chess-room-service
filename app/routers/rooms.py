@@ -14,7 +14,6 @@ from app.services.room_service import (
     quick_join_or_create_room,
 )
 
-
 router = APIRouter(
     prefix="/rooms",
     tags=["rooms"],

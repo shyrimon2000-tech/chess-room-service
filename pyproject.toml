@@ -1,0 +1,14 @@
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = false
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["jose.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

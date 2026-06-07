@@ -17,7 +17,9 @@ def publish_room_created(room_id: int, white_player_id: int) -> None:
     client.publish("room_events", payload)
 
 
-def publish_room_activated(room_id: int, white_player_id: int, black_player_id: int) -> None:
+def publish_room_activated(
+    room_id: int, white_player_id: int, black_player_id: int
+) -> None:
     client = redis.from_url(settings.REDIS_URL)
 
     payload = json.dumps({

@@ -1,14 +1,13 @@
 import json
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from unittest.mock import patch
 
-from app.models import Base, Room
 from app.events.subscriber import _handle_message
-
+from app.models import Base, Room
 
 engine = create_engine(
     "sqlite://",
@@ -27,7 +26,11 @@ def reset_db():
 
 def make_room(status="active", white_player_id=1, black_player_id=2):
     db = TestingSessionLocal()
-    room = Room(white_player_id=white_player_id, black_player_id=black_player_id, status=status)
+    room = Room(
+        white_player_id=white_player_id,
+        black_player_id=black_player_id,
+        status=status,
+    )
     db.add(room)
     db.commit()
     db.refresh(room)
@@ -53,13 +56,17 @@ def get_room(room_id: int) -> Room:
 
 def test_game_over_marks_room_finished():
     room_id = make_room(status="active")
-    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})
+    send_event(
+        {"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"}
+    )
     assert get_room(room_id).status == "finished"
 
 
 def test_game_over_stores_game_id():
     room_id = make_room(status="active")
-    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})
+    send_event(
+        {"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"}
+    )
     assert get_room(room_id).game_id == 5
 
 
@@ -81,7 +88,10 @@ def test_game_abandoned_stores_game_id():
 
 def test_non_message_type_ignored():
     room_id = make_room(status="active")
-    message = {"type": "subscribe", "data": json.dumps({"event": "game_over", "room_id": room_id})}
+    message = {
+        "type": "subscribe",
+        "data": json.dumps({"event": "game_over", "room_id": room_id}),
+    }
     with patch("app.events.subscriber.SessionLocal", TestingSessionLocal):
         _handle_message(message)
     assert get_room(room_id).status == "active"

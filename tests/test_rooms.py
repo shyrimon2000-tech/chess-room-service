@@ -1,12 +1,13 @@
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from unittest.mock import patch
 
-from app.main import app
 from app.database import get_db
+from app.main import app
 from app.models import Base, Room
 from app.services.auth_dependencies import CurrentUser, get_current_user
 
@@ -31,7 +32,9 @@ app.dependency_overrides[get_db] = override_get_db
 
 
 def make_client(user_id: int, role: str = "user") -> TestClient:
-    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=user_id, role=role)
+    app.dependency_overrides[get_current_user] = (
+        lambda: CurrentUser(id=user_id, role=role)
+    )
     return TestClient(app)
 
 
@@ -313,9 +316,14 @@ def test_request_with_invalid_token_returns_401():
 
 def test_request_with_expired_token_returns_401():
     import datetime
+
     from jose import jwt as jose_jwt
     token = jose_jwt.encode(
-        {"sub": "1", "role": "user", "exp": datetime.datetime.utcnow() - datetime.timedelta(hours=1)},
+        {
+            "sub": "1",
+            "role": "user",
+            "exp": datetime.datetime.utcnow() - datetime.timedelta(hours=1),
+        },
         "change-this-secret-key",
         algorithm="HS256",
     )

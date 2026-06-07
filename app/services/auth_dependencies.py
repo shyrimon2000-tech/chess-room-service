@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 from app.config import settings
 
-
 security = HTTPBearer()
 
 
