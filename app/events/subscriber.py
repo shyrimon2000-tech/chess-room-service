@@ -25,6 +25,25 @@ def _handle_message(message):
     event = data.get("event")
     room_id = data.get("room_id")
 
+    if event == "game_created":
+        if room_id is None:
+            return
+        db = SessionLocal()
+        try:
+            room = get_room_by_id(db, room_id)
+            if room is None:
+                return
+            game_id = data.get("game_id")
+            if game_id is not None:
+                room.game_id = game_id
+                save_room(db, room)
+                logger.info("Room %s linked to game %s", room_id, game_id)
+        except Exception:
+            logger.exception("Failed to handle game_created for room %s", room_id)
+        finally:
+            db.close()
+        return
+
     if event not in ("game_over", "game_abandoned"):
         return
 
