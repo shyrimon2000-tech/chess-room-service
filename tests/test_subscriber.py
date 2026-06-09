@@ -45,7 +45,7 @@ def send_event(data: dict):
         _handle_message(message)
 
 
-def get_room(room_id: int) -> Room:
+def get_room(room_id: int) -> Room | None:
     db = TestingSessionLocal()
     room = db.query(Room).filter(Room.id == room_id).first()
     db.close()
