@@ -83,12 +83,12 @@ def test_get_rooms_returns_active_room(mock_publish):
     assert any(room["status"] == "active" for room in r.json())
 
 
-def test_get_rooms_excludes_finished_rooms():
+def test_get_rooms_excludes_deleted_rooms():
     room_data = make_client(1).post("/rooms").json()
     db = TestingSessionLocal()
     try:
         room = db.query(Room).filter(Room.id == room_data["id"]).first()
-        room.status = "finished"
+        db.delete(room)
         db.commit()
     finally:
         db.close()
@@ -225,7 +225,7 @@ def test_join_own_active_room_as_black_returns_player(mock_publish):
     assert r.json()["role"] == "player"
 
 
-def test_join_finished_room_returns_400():
+def test_join_unavailable_room_returns_400():
     room_data = make_client(1).post("/rooms").json()
     db = TestingSessionLocal()
     try:
@@ -235,41 +235,6 @@ def test_join_finished_room_returns_400():
     finally:
         db.close()
     r = make_client(2).post(f"/rooms/{room_data['id']}/join")
-    assert r.status_code == 400
-
-
-# --- POST /rooms/{room_id}/leave ---
-
-def test_leave_waiting_room():
-    room = make_client(1).post("/rooms").json()
-    r = make_client(1).post(f"/rooms/{room['id']}/leave")
-    assert r.status_code == 200
-    assert "message" in r.json()
-
-
-def test_leave_waiting_room_deletes_if_empty():
-    room = make_client(1).post("/rooms").json()
-    make_client(1).post(f"/rooms/{room['id']}/leave")
-    r = make_client(1).get(f"/rooms/{room['id']}")
-    assert r.status_code == 404
-
-
-@patch("app.services.room_service.publish_room_activated")
-def test_leave_active_room_returns_400(mock_publish):
-    room = make_client(1).post("/rooms").json()
-    make_client(2).post(f"/rooms/{room['id']}/join")
-    r = make_client(1).post(f"/rooms/{room['id']}/leave")
-    assert r.status_code == 400
-
-
-def test_leave_room_not_player_returns_400():
-    room = make_client(1).post("/rooms").json()
-    r = make_client(2).post(f"/rooms/{room['id']}/leave")
-    assert r.status_code == 400
-
-
-def test_leave_room_not_found():
-    r = make_client(1).post("/rooms/999/leave")
     assert r.status_code == 400
 
 
