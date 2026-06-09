@@ -10,7 +10,6 @@ from app.services.room_service import (
     get_room,
     get_rooms,
     join_room,
-    leave_room,
     quick_join_or_create_room,
 )
 
@@ -78,21 +77,6 @@ def join_room_endpoint(
             detail=str(error),
         )
 
-
-@router.post("/{room_id}/leave", response_model=MessageResponse)
-def leave_room_endpoint(
-    room_id: int,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    try:
-        message = leave_room(db, room_id, current_user.id)
-        return MessageResponse(message=message)
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(error),
-        )
 
 
 @router.delete("/{room_id}", response_model=MessageResponse)

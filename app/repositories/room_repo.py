@@ -21,6 +21,10 @@ def get_room_by_id(db: Session, room_id: int) -> Room | None:
     return db.query(Room).filter(Room.id == room_id).first()
 
 
+def get_room_by_id_for_update(db: Session, room_id: int) -> Room | None:
+    return db.query(Room).filter(Room.id == room_id).with_for_update().first()
+
+
 def find_user_waiting_room(db: Session, user_id: int) -> Room | None:
     return (
         db.query(Room)

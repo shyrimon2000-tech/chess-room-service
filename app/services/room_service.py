@@ -9,6 +9,7 @@ from app.repositories.room_repo import (
     find_user_waiting_room,
     get_all_rooms,
     get_room_by_id,
+    get_room_by_id_for_update,
 )
 
 
@@ -69,7 +70,7 @@ def get_room(db: Session, room_id: int) -> Room:
 
 
 def join_room(db: Session, room_id: int, user_id: int) -> tuple[Room, str]:
-    room = get_room_by_id(db, room_id)
+    room = get_room_by_id_for_update(db, room_id)
 
     if room is None:
         raise ValueError("Room not found")
@@ -92,31 +93,6 @@ def join_room(db: Session, room_id: int, user_id: int) -> tuple[Room, str]:
 
     raise ValueError("Room is not available")
 
-
-def leave_room(db: Session, room_id: int, user_id: int) -> str:
-    room = get_room_by_id(db, room_id)
-
-    if room is None:
-        raise ValueError("Room not found")
-
-    if room.status != "waiting":
-        raise ValueError("Cannot leave active room through room-service")
-
-    if room.white_player_id == user_id:
-        room.white_player_id = None
-    elif room.black_player_id == user_id:
-        room.black_player_id = None
-    else:
-        raise ValueError("User is not a player in this room")
-
-    if room.white_player_id is None and room.black_player_id is None:
-        delete_room(db, room)
-        return "Room deleted because it became empty"
-
-    db.commit()
-    db.refresh(room)
-
-    return "Left room successfully"
 
 
 def close_room(db: Session, room_id: int) -> str:

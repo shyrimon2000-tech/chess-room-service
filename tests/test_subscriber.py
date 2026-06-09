@@ -45,7 +45,7 @@ def send_event(data: dict):
         _handle_message(message)
 
 
-def get_room(room_id: int) -> Room:
+def get_room(room_id: int) -> Room | None:
     db = TestingSessionLocal()
     room = db.query(Room).filter(Room.id == room_id).first()
     db.close()
@@ -54,34 +54,38 @@ def get_room(room_id: int) -> Room:
 
 # --- game_over ---
 
-def test_game_over_marks_room_finished():
+def test_game_over_deletes_room():
     room_id = make_room(status="active")
     send_event(
         {"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"}
     )
-    assert get_room(room_id).status == "finished"
-
-
-def test_game_over_stores_game_id():
-    room_id = make_room(status="active")
-    send_event(
-        {"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"}
-    )
-    assert get_room(room_id).game_id == 5
+    assert get_room(room_id) is None
 
 
 # --- game_abandoned ---
 
-def test_game_abandoned_marks_room_finished():
-    room_id = make_room(status="waiting", black_player_id=None)
+def test_game_abandoned_deletes_active_room():
+    room_id = make_room(status="active")
     send_event({"event": "game_abandoned", "game_id": 3, "room_id": room_id})
-    assert get_room(room_id).status == "finished"
+    assert get_room(room_id) is None
 
 
-def test_game_abandoned_stores_game_id():
+def test_game_abandoned_deletes_waiting_room():
     room_id = make_room(status="waiting", black_player_id=None)
     send_event({"event": "game_abandoned", "game_id": 3, "room_id": room_id})
-    assert get_room(room_id).game_id == 3
+    assert get_room(room_id) is None
+
+
+# --- game_created ---
+
+def test_game_created_links_game_id():
+    room_id = make_room(status="active")
+    send_event({"event": "game_created", "game_id": 7, "room_id": room_id})
+    assert get_room(room_id).game_id == 7
+
+
+def test_game_created_unknown_room_handled_gracefully():
+    send_event({"event": "game_created", "game_id": 7, "room_id": 9999})
 
 
 # --- edge cases ---
@@ -94,13 +98,13 @@ def test_non_message_type_ignored():
     }
     with patch("app.events.subscriber.SessionLocal", TestingSessionLocal):
         _handle_message(message)
-    assert get_room(room_id).status == "active"
+    assert get_room(room_id) is not None
 
 
 def test_unknown_event_ignored():
     room_id = make_room(status="active")
     send_event({"event": "some_other_event", "room_id": room_id})
-    assert get_room(room_id).status == "active"
+    assert get_room(room_id) is not None
 
 
 def test_unknown_room_handled_gracefully():
