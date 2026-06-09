@@ -20,10 +20,9 @@ The user is learning backend development. Apply these principles in every sessio
 - Creating rooms and assigning the white player
 - Quick matchmaking (join an available room or create a new one)
 - Joining a room by ID as a player or spectator
-- Leaving a waiting room
 - Admin room deletion
 - Publishing `room_created` and `room_activated` events to Redis
-- Subscribing to `game_over` and `game_abandoned` events to mark rooms as `finished`
+- Subscribing to `game_over` and `game_abandoned` events to delete the room from the database
 
 **This service is NOT responsible for:**
 - Chess move validation or game state
@@ -81,7 +80,7 @@ routers → services → repositories → models
 
 **`app/events/`** — Redis pub/sub
 - `publisher.py` — publishes `room_created` and `room_activated` to the `room_events` channel
-- `subscriber.py` — subscribes to `game_events`; handles `game_over` and `game_abandoned` by marking the room as `finished` and storing `game_id`
+- `subscriber.py` — subscribes to `game_events`; handles `game_over` and `game_abandoned` by **deleting the room** from the database
 
 ---
 
@@ -105,14 +104,15 @@ Single table: `rooms`
 ## Room Status Lifecycle
 
 ```
-waiting → active → finished
+waiting → active → [deleted]
 ```
 
 | Status | Meaning |
 |---|---|
 | `waiting` | Room created, waiting for second player |
 | `active` | Both players joined, game in progress |
-| `finished` | Game ended — set by Redis event from game-service |
+
+Rooms are **deleted from the database** when the game ends — there is no `finished` status. The subscriber handles `game_over` and `game_abandoned` by calling `delete_room()`.
 
 Admin can delete a room at any time — the row is removed from the database entirely.
 
@@ -121,10 +121,9 @@ Admin can delete a room at any time — the row is removed from the database ent
 1. **Create room** (`POST /rooms`) — caller becomes `white_player_id`, status is `waiting`; publishes `room_created` to Redis
 2. **Quick join** (`POST /rooms/quick`) — finds an available waiting room or creates a new one; joining user becomes `black_player_id`, status becomes `active`, publishes `room_activated`
 3. **Join by ID** (`POST /rooms/{id}/join`) — second player activates room and publishes `room_activated`; third+ player joins as spectator
-4. **Leave room** (`POST /rooms/{id}/leave`) — only allowed for `waiting` rooms; if both player slots become empty the room is deleted
-5. **Active room leave** — intentionally blocked; active game outcomes belong to game-service
-6. **Admin close** (`DELETE /rooms/{id}`) — deletes the room row from the database
-7. **Game over** (Redis `game_over` or `game_abandoned`) — subscriber marks room as `finished`, stores `game_id`
+4. **Active room leave** — intentionally blocked; active game outcomes belong to game-service
+5. **Admin close** (`DELETE /rooms/{id}`) — deletes the room row from the database
+6. **Game over** (Redis `game_over` or `game_abandoned`) — subscriber **deletes the room row** entirely
 
 ---
 
@@ -174,7 +173,7 @@ Token flow:
 { "event": "game_abandoned", "game_id": 1, "room_id": 42 }
 ```
 
-Room-service handles both by setting `room.status = "finished"` and `room.game_id = game_id`.
+Room-service handles both by **deleting the room row** from the database via `delete_room()`.
 
 ### Cross-Service Boundary
 
@@ -193,7 +192,6 @@ Room-service never calls game-service over HTTP.
 | `POST` | `/rooms/quick` | Quick join or create |
 | `GET` | `/rooms/{room_id}` | Get room by ID |
 | `POST` | `/rooms/{room_id}/join` | Join room as player or spectator |
-| `POST` | `/rooms/{room_id}/leave` | Leave a waiting room |
 | `DELETE` | `/rooms/{room_id}` | Admin-only: delete room |
 
 ---
@@ -275,8 +273,31 @@ cp .env.example .env
 
 **Room lifecycle**
 - Do not allow leaving an active room through room-service
-- Do not set `status = "finished"` directly in HTTP handlers — only the Redis subscriber does this
+- Do not set `status = "finished"` in the subscriber — rooms are **deleted**, not marked finished
+- Do not re-add a `/leave` endpoint — it was intentionally removed
 
 **Infrastructure**
 - Do not run `alembic upgrade head` automatically on app startup
 - Do not expose the MySQL container port to the host unnecessarily
+
+---
+
+## Bug Fixes (June 2026)
+
+Documented so these issues are not re-introduced.
+
+### 1. Simultaneous join race condition
+**Problem:** Two players clicking Join at the same time could both get `role: "player"` because `get_room_by_id` was a plain SELECT — both reads saw the room as `waiting` before either write committed.
+**Fix:** Added `get_room_by_id_for_update()` in `room_repo.py` using `SELECT ... FOR UPDATE`. The `join_room` service function now calls this instead of `get_room_by_id`. This serializes concurrent joins at the database level.
+
+### 2. Room not deleted after game ends
+**Problem:** The subscriber called `room.status = "finished"` on `game_over`/`game_abandoned`, but never cleaned up the room row. Rooms accumulated in the database and kept appearing in the room list.
+**Fix:** Subscriber now calls `delete_room(db, room)` instead of updating status. Rooms are fully deleted when a game ends.
+
+### 3. Waiting room not cleaned up when creator leaves
+**Problem:** If the creator navigated away from a waiting game (before an opponent joined), game-service published `game_abandoned`. Room-service subscriber handled this event but only for active games — waiting rooms were left in the database.
+**Fix:** Subscriber now handles `game_abandoned` for all room statuses, calling `delete_room()` unconditionally.
+
+### 4. `/leave` endpoint and dead code removed
+**Problem:** `POST /rooms/{id}/leave` endpoint, `leave_room()` service function, and associated repo calls were unused — no client called them after the game lifecycle was redesigned.
+**Fix:** Endpoint, service function, and route handler removed entirely. Frontend's `leaveRoom()` api.js function also removed.
