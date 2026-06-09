@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import settings
 from app.database import get_db
 from app.main import app
 from app.models import Base, Room
@@ -289,8 +290,8 @@ def test_request_with_expired_token_returns_401():
             "role": "user",
             "exp": datetime.datetime.utcnow() - datetime.timedelta(hours=1),
         },
-        "change-this-secret-key",
-        algorithm="HS256",
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
     )
     client = TestClient(app)
     r = client.get("/rooms", headers={"Authorization": f"Bearer {token}"})
