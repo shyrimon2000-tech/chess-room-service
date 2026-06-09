@@ -9,6 +9,7 @@ from app.repositories.room_repo import (
     find_user_waiting_room,
     get_all_rooms,
     get_room_by_id,
+    get_room_by_id_for_update,
 )
 
 
@@ -69,7 +70,7 @@ def get_room(db: Session, room_id: int) -> Room:
 
 
 def join_room(db: Session, room_id: int, user_id: int) -> tuple[Room, str]:
-    room = get_room_by_id(db, room_id)
+    room = get_room_by_id_for_update(db, room_id)
 
     if room is None:
         raise ValueError("Room not found")
