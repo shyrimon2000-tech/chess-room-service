@@ -20,6 +20,9 @@ class Room(Base):
     white_player_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     black_player_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    white_player_nickname: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    black_player_nickname: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     game_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

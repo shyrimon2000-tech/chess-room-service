@@ -17,19 +17,19 @@ def get_rooms(db: Session) -> list[Room]:
     return get_all_rooms(db)
 
 
-def create_new_room(db: Session, user_id: int) -> tuple[Room, bool]:
+def create_new_room(db: Session, user_id: int, username: str) -> tuple[Room, bool]:
     existing_waiting_room = find_user_waiting_room(db, user_id)
 
     if existing_waiting_room is not None:
         return existing_waiting_room, False
 
-    room = create_room(db, user_id)
+    room = create_room(db, user_id, username)
     assert room.white_player_id is not None
     publish_room_created(room.id, room.white_player_id)
     return room, True
 
 
-def quick_join_or_create_room(db: Session, user_id: int) -> Room:
+def quick_join_or_create_room(db: Session, user_id: int, username: str) -> Room:
     user_waiting_room = find_user_waiting_room(db, user_id)
 
     if user_waiting_room is not None:
@@ -38,12 +38,13 @@ def quick_join_or_create_room(db: Session, user_id: int) -> Room:
     available_room = find_available_waiting_room(db, user_id)
 
     if available_room is None:
-        room = create_room(db, user_id)
+        room = create_room(db, user_id, username)
         assert room.white_player_id is not None
         publish_room_created(room.id, room.white_player_id)
         return room
 
     available_room.black_player_id = user_id
+    available_room.black_player_nickname = username
     available_room.status = "active"
 
     db.commit()
@@ -69,7 +70,9 @@ def get_room(db: Session, room_id: int) -> Room:
     return room
 
 
-def join_room(db: Session, room_id: int, user_id: int) -> tuple[Room, str]:
+def join_room(
+    db: Session, room_id: int, user_id: int, username: str
+) -> tuple[Room, str]:
     room = get_room_by_id_for_update(db, room_id)
 
     if room is None:
@@ -80,6 +83,7 @@ def join_room(db: Session, room_id: int, user_id: int) -> tuple[Room, str]:
 
     if room.status == "waiting":
         room.black_player_id = user_id
+        room.black_player_nickname = username
         room.status = "active"
         db.commit()
         db.refresh(room)

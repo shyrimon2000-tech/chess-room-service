@@ -33,7 +33,7 @@ def create_room_endpoint(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    room, created = create_new_room(db, current_user.id)
+    room, created = create_new_room(db, current_user.id, current_user.username)
     if not created:
         response.status_code = status.HTTP_200_OK
     return room
@@ -44,7 +44,7 @@ def quick_room_endpoint(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    return quick_join_or_create_room(db, current_user.id)
+    return quick_join_or_create_room(db, current_user.id, current_user.username)
 
 
 @router.get("/{room_id}", response_model=RoomResponse)
@@ -69,7 +69,7 @@ def join_room_endpoint(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     try:
-        room, role = join_room(db, room_id, current_user.id)
+        room, role = join_room(db, room_id, current_user.id, current_user.username)
         return JoinRoomResponse.model_validate({**room.__dict__, "role": role})
     except ValueError as error:
         raise HTTPException(

@@ -34,7 +34,7 @@ app.dependency_overrides[get_db] = override_get_db
 
 def make_client(user_id: int, role: str = "user") -> TestClient:
     app.dependency_overrides[get_current_user] = (
-        lambda: CurrentUser(id=user_id, role=role)
+        lambda: CurrentUser(id=user_id, role=role, username=f"user{user_id}")
     )
     return TestClient(app)
 
@@ -107,6 +107,14 @@ def test_create_room_returns_201():
     assert data["status"] == "waiting"
     assert data["white_player_id"] == 1
     assert data["black_player_id"] is None
+
+
+def test_create_room_stores_white_nickname():
+    r = make_client(1).post("/rooms")
+    assert r.status_code == 201
+    data = r.json()
+    assert data["white_player_nickname"] == "user1"
+    assert data["black_player_nickname"] is None
 
 
 def test_create_room_existing_returns_200():
@@ -224,6 +232,24 @@ def test_join_own_active_room_as_black_returns_player(mock_publish):
     r = make_client(2).post(f"/rooms/{room['id']}/join")
     assert r.status_code == 200
     assert r.json()["role"] == "player"
+
+
+@patch("app.services.room_service.publish_room_activated")
+def test_join_room_stores_black_nickname(mock_publish):
+    room = make_client(1).post("/rooms").json()
+    r = make_client(2).post(f"/rooms/{room['id']}/join")
+    data = r.json()
+    assert data["white_player_nickname"] == "user1"
+    assert data["black_player_nickname"] == "user2"
+
+
+@patch("app.services.room_service.publish_room_activated")
+def test_quick_join_stores_black_nickname(mock_publish):
+    make_client(1).post("/rooms")
+    r = make_client(2).post("/rooms/quick")
+    data = r.json()
+    assert data["white_player_nickname"] == "user1"
+    assert data["black_player_nickname"] == "user2"
 
 
 def test_join_unavailable_room_returns_400():

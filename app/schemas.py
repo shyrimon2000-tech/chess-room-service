@@ -9,6 +9,8 @@ class RoomResponse(BaseModel):
     status: str
     white_player_id: int | None
     black_player_id: int | None
+    white_player_nickname: str | None
+    black_player_nickname: str | None
     game_id: int | None
     created_at: datetime
 

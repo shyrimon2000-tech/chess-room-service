@@ -11,6 +11,7 @@ security = HTTPBearer()
 class CurrentUser(BaseModel):
     id: int
     role: str
+    username: str
 
 
 def get_current_user(
@@ -27,8 +28,9 @@ def get_current_user(
 
         user_id = payload.get("sub")
         role = payload.get("role")
+        username = payload.get("username")
 
-        if user_id is None or role is None:
+        if user_id is None or role is None or username is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token payload",
@@ -37,6 +39,7 @@ def get_current_user(
         return CurrentUser(
             id=int(user_id),
             role=role,
+            username=username,
         )
 
     except (JWTError, ValueError):

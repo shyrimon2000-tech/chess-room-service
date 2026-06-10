@@ -3,10 +3,12 @@ from sqlalchemy.orm import Session
 from app.models import Room
 
 
-def create_room(db: Session, user_id: int) -> Room:
+def create_room(db: Session, user_id: int, username: str) -> Room:
     room = Room(
         white_player_id=user_id,
+        white_player_nickname=username,
         black_player_id=None,
+        black_player_nickname=None,
         status="waiting",
     )
 
