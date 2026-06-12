@@ -107,6 +107,7 @@ def test_create_room_returns_201():
     assert data["status"] == "waiting"
     assert data["white_player_id"] == 1
     assert data["black_player_id"] is None
+    assert data["game_id"] is None
 
 
 def test_create_room_stores_white_nickname():
@@ -152,6 +153,24 @@ def test_get_room_not_found():
     assert r.status_code == 404
 
 
+def test_get_room_returns_game_id_after_link():
+    from app.events.subscriber import _handle_message
+    import json as _json
+
+    created = make_client(1).post("/rooms").json()
+    db = TestingSessionLocal()
+    try:
+        message = {"type": "message", "data": _json.dumps({"event": "game_created", "game_id": 42, "room_id": created["id"]})}
+        with patch("app.events.subscriber.SessionLocal", TestingSessionLocal):
+            _handle_message(message)
+    finally:
+        db.close()
+
+    r = make_client(1).get(f"/rooms/{created['id']}")
+    assert r.status_code == 200
+    assert r.json()["game_id"] == 42
+
+
 # --- POST /rooms/quick ---
 
 @patch("app.services.room_service.publish_room_activated")
@@ -164,13 +183,13 @@ def test_quick_join_creates_room_when_none_available(mock_publish):
 
 @patch("app.services.room_service.publish_room_activated")
 def test_quick_join_joins_existing_room(mock_publish):
-    make_client(1).post("/rooms")
+    room = make_client(1).post("/rooms").json()
     r = make_client(2).post("/rooms/quick")
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "active"
     assert data["black_player_id"] == 2
-    mock_publish.assert_called_once()
+    mock_publish.assert_called_once_with(room["id"], 1, 2)
 
 
 @patch("app.services.room_service.publish_room_activated")
@@ -199,7 +218,7 @@ def test_join_room_as_player(mock_publish):
     data = r.json()
     assert data["role"] == "player"
     assert data["status"] == "active"
-    mock_publish.assert_called_once()
+    mock_publish.assert_called_once_with(room["id"], 1, 2)
 
 
 @patch("app.services.room_service.publish_room_activated")

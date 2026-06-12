@@ -2,12 +2,16 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.database import wait_for_db
+from app.events.publisher import wait_for_redis
 from app.events.subscriber import start_subscriber
 from app.routers import rooms
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    wait_for_db()
+    wait_for_redis()
     start_subscriber()
     yield
 
@@ -15,7 +19,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Chess Room Service",
     description="Room management microservice for the chess application",
-    version="0.1.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 

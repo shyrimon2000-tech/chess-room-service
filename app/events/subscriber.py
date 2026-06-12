@@ -75,8 +75,8 @@ def _subscriber_loop():
             for message in pubsub.listen():
                 _handle_message(message)
         except Exception:
-            logger.exception("Subscriber connection lost, reconnecting in 1s")
-            time.sleep(1)
+            logger.exception("Subscriber connection lost, reconnecting in 5s")
+            time.sleep(5)
 
 
 def start_subscriber():

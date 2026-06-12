@@ -56,10 +56,12 @@ def get_room(room_id: int) -> Room | None:
 
 def test_game_over_deletes_room():
     room_id = make_room(status="active")
-    send_event(
-        {"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"}
-    )
+    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})
     assert get_room(room_id) is None
+
+
+def test_game_over_missing_room_id_handled_gracefully():
+    send_event({"event": "game_over", "game_id": 5, "winner": "white"})
 
 
 # --- game_abandoned ---
@@ -76,6 +78,10 @@ def test_game_abandoned_deletes_waiting_room():
     assert get_room(room_id) is None
 
 
+def test_game_abandoned_missing_room_id_handled_gracefully():
+    send_event({"event": "game_abandoned", "game_id": 3})
+
+
 # --- game_created ---
 
 def test_game_created_links_game_id():
@@ -84,8 +90,19 @@ def test_game_created_links_game_id():
     assert get_room(room_id).game_id == 7
 
 
+def test_game_created_idempotent():
+    room_id = make_room(status="active")
+    send_event({"event": "game_created", "game_id": 7, "room_id": room_id})
+    send_event({"event": "game_created", "game_id": 7, "room_id": room_id})
+    assert get_room(room_id).game_id == 7
+
+
 def test_game_created_unknown_room_handled_gracefully():
     send_event({"event": "game_created", "game_id": 7, "room_id": 9999})
+
+
+def test_game_created_missing_room_id_handled_gracefully():
+    send_event({"event": "game_created", "game_id": 7})
 
 
 # --- edge cases ---
@@ -109,3 +126,17 @@ def test_unknown_event_ignored():
 
 def test_unknown_room_handled_gracefully():
     send_event({"event": "game_over", "game_id": 5, "room_id": 9999, "winner": "black"})
+
+
+def test_game_over_second_instance_idempotent():
+    """Room already deleted by another instance — second processing is a no-op."""
+    room_id = make_room(status="active")
+    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})
+    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})
+    assert get_room(room_id) is None
+
+
+def test_invalid_json_handled_gracefully():
+    message = {"type": "message", "data": "not valid json {{{"}
+    with patch("app.events.subscriber.SessionLocal", TestingSessionLocal):
+        _handle_message(message)
