@@ -79,8 +79,8 @@ routers → services → repositories → models
 **`app/schemas.py`** — Pydantic schemas for request/response serialization
 
 **`app/events/`** — Redis pub/sub
-- `publisher.py` — publishes `room_created` and `room_activated` to the `room_events` channel
-- `subscriber.py` — subscribes to `game_events`; handles `game_over` and `game_abandoned` by **deleting the room** from the database
+- `publisher.py` — publishes `room_created` and `room_activated` to the `room_events` channel; includes `wait_for_redis()` startup probe
+- `subscriber.py` — subscribes to `game_events`; handles `game_created` by storing `game_id` on the room; handles `game_over` and `game_abandoned` by **deleting the room** from the database
 
 ---
 
@@ -91,10 +91,12 @@ Single table: `rooms`
 | Field | Type | Notes |
 |---|---|---|
 | `id` | Integer PK | |
-| `status` | String(20) | `waiting`, `active`, `finished` |
+| `status` | String(20) | `waiting` or `active` |
 | `white_player_id` | Integer nullable | Plain int — no FK to auth-service |
 | `black_player_id` | Integer nullable | Plain int — no FK to auth-service |
-| `game_id` | Integer nullable | Plain int — no FK to game-service; set when game ends |
+| `white_player_nickname` | String(50) nullable | Stored at join time so game-service doesn't need to call auth |
+| `black_player_nickname` | String(50) nullable | Same as above |
+| `game_id` | Integer nullable | Plain int — set when game-service publishes `game_created` |
 | `created_at` | DateTime | UTC |
 
 `white_player_id`, `black_player_id`, and `game_id` are plain integers. Cross-service foreign keys are intentionally avoided.
@@ -169,11 +171,14 @@ Token flow:
 **Subscribed from `game_events`:**
 
 ```json
+{ "event": "game_created",   "game_id": 1, "room_id": 42 }
 { "event": "game_over",      "game_id": 1, "room_id": 42, "winner": "white" }
 { "event": "game_abandoned", "game_id": 1, "room_id": 42 }
 ```
 
-Room-service handles both by **deleting the room row** from the database via `delete_room()`.
+`game_created` — room-service stores `game_id` on the room row so clients can navigate to the game.
+
+`game_over` and `game_abandoned` — room-service **deletes the room row** from the database via `delete_room()`.
 
 ### Cross-Service Boundary
 

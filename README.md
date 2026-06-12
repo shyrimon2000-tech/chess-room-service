@@ -2,7 +2,7 @@
 
 A room management microservice for a real-time chess web application built with a microservice architecture.
 
-This service handles room creation, quick matchmaking, player join and leave flows, spectator connections, admin room management, and publishing room lifecycle events to Redis so game-service can create and track games.
+This service handles room creation, quick matchmaking, player and spectator join flows, admin room management, and publishing room lifecycle events to Redis so game-service can create and track games.
 
 ---
 
@@ -19,11 +19,11 @@ Dev: [![CI Dev](https://github.com/shyrimon2000-tech/chess-room-service/actions/
 - Room creation with automatic white player assignment
 - Quick matchmaking: join an available waiting room or create a new one
 - Join a specific room by ID — player or spectator
-- Leave a waiting room
 - Admin-only room deletion
-- Room status lifecycle: `waiting` → `active` → `finished`
-- Redis pub/sub: publishes `room_created` and `room_activated`, subscribes to `game_over` and `game_abandoned`
-- Automatic room status update when game-service reports a result
+- Room status lifecycle: `waiting` → `active` → `[deleted]`
+- Redis pub/sub: publishes `room_created` and `room_activated`; subscribes to `game_created`, `game_over`, and `game_abandoned`
+- Automatic room deletion when game-service reports a result
+- Startup probes with tenacity retry for DB and Redis
 - JWT token validation via shared secret
 - Role-based access control with `user` and `admin` roles
 - MySQL database persistence
@@ -45,6 +45,7 @@ Dev: [![CI Dev](https://github.com/shyrimon2000-tech/chess-room-service/actions/
 - Redis
 - python-jose
 - Pydantic Settings
+- tenacity
 - pytest
 - Docker
 - Docker Compose
@@ -77,6 +78,7 @@ alembic/
 
 tests/
 ├── test_rooms.py
+├── test_publisher.py
 └── test_subscriber.py
 ```
 
@@ -215,25 +217,6 @@ Response:
 - If the caller is already a player in the room, returns `role: "player"`.
 - If the room is `waiting`, the caller becomes `black_player_id`, status becomes `active`, `role: "player"` is returned, and `room_activated` is published to Redis.
 - If the room is `active`, the caller joins as a spectator and `role: "spectator"` is returned.
-- If the room is `finished`, returns 400.
-
----
-
-### Leave Room
-
-```http
-POST /rooms/{room_id}/leave
-```
-
-Required header:
-
-```http
-Authorization: Bearer <access_token>
-```
-
-Leaves a waiting room. Only allowed when the room status is `waiting`. If the room becomes empty after leaving, it is deleted.
-
-Returns 400 if the room is active or the caller is not a player.
 
 ---
 
@@ -278,28 +261,29 @@ Published when the second player joins the room via HTTP.
 ### Subscribed: `game_events` channel
 
 ```json
-{ "event": "game_over", "game_id": 1, "room_id": 42, "winner": "white" }
-```
-
-```json
+{ "event": "game_created",   "game_id": 1, "room_id": 42 }
+{ "event": "game_over",      "game_id": 1, "room_id": 42, "winner": "white" }
 { "event": "game_abandoned", "game_id": 1, "room_id": 42 }
 ```
 
-When received, room-service marks the room as `finished` and stores `game_id`.
+`game_created` — room-service stores `game_id` on the room row so clients can navigate to the game.
+
+`game_over` and `game_abandoned` — room-service **deletes the room row** from the database.
 
 ---
 
 ## Room Lifecycle
 
 ```text
-waiting → active → finished
+waiting → active → [deleted]
 ```
 
 | Status | Meaning |
 |---|---|
 | `waiting` | Room created, waiting for second player |
 | `active` | Both players joined, game in progress |
-| `finished` | Game ended — set by Redis event from game-service |
+
+Rooms are **deleted from the database** when the game ends — there is no `finished` status. The subscriber handles `game_over` and `game_abandoned` by calling `delete_room()`.
 
 Admin can delete a room at any time — the row is removed from the database.
 
@@ -446,10 +430,12 @@ Notes:
 | Field | Type | Description |
 |---|---|---|
 | `id` | Integer PK | Internal room ID |
-| `status` | String(20) | `waiting`, `active`, or `finished` |
+| `status` | String(20) | `waiting` or `active` |
 | `white_player_id` | Integer nullable | Creator of the room — plain int, no FK to auth-service |
 | `black_player_id` | Integer nullable | Second player — set when they join |
-| `game_id` | Integer nullable | Game assigned to this room — set when game-service reports a result |
+| `white_player_nickname` | String(50) nullable | Stored at join time so game-service doesn't need to call auth |
+| `black_player_nickname` | String(50) nullable | Same as above |
+| `game_id` | Integer nullable | Plain int — set when game-service publishes `game_created` |
 | `created_at` | DateTime | UTC |
 
 Cross-service foreign keys are intentionally avoided. `white_player_id`, `black_player_id`, and `game_id` are plain integers.
@@ -469,8 +455,10 @@ Test coverage includes:
 - empty room list
 - waiting room appears in list
 - room creation returns correct fields
+- room creation sets `game_id` to null
 - duplicate room creation returns existing room
 - get room by ID
+- get room returns `game_id` after game is linked
 - room not found returns 404
 - quick join creates a new room when none is available
 - quick join joins an existing waiting room
@@ -479,10 +467,6 @@ Test coverage includes:
 - join own room returns player role
 - join active room returns spectator role
 - join non-existent room returns 400
-- leave waiting room
-- leave empties room and deletes it
-- leave active room returns 400
-- non-player leave returns 400
 - admin close room
 - admin close room removes it from database
 - admin close non-existent room returns 404
@@ -490,18 +474,24 @@ Test coverage includes:
 - request without token returns 401
 - request with invalid token returns 401
 - request with expired token returns 401
-- `game_over` event marks room as finished
-- `game_over` event stores game_id on room
-- `game_abandoned` event marks room as finished
-- `game_abandoned` event stores game_id on room
+- publisher swallows Redis error on `room_created`
+- publisher swallows Redis error on `room_activated`
+- `game_created` event stores `game_id` on room
+- `game_created` is idempotent (same value written twice)
+- `game_created` missing room_id handled gracefully
+- `game_over` event deletes room
+- `game_over` missing room_id handled gracefully
+- `game_abandoned` event deletes room
+- `game_abandoned` missing room_id handled gracefully
+- `game_over` second instance idempotent (room already deleted)
 - non-message Redis event type ignored
 - unknown event type ignored
-- unknown room_id handled gracefully
+- invalid JSON handled gracefully
 
 Current test count:
 
 ```text
-31 passed
+47 passed
 ```
 
 ---
@@ -517,7 +507,6 @@ POST   /rooms
 POST   /rooms/quick
 GET    /rooms/{room_id}
 POST   /rooms/{room_id}/join
-POST   /rooms/{room_id}/leave
 DELETE /rooms/{room_id}
 ```
 
@@ -531,11 +520,12 @@ Redis (shared with game-service)
 Alembic migrations
 pytest test suite
 Redis pub/sub publisher (room_created, room_activated)
-Redis pub/sub subscriber (game_over, game_abandoned)
+Redis pub/sub subscriber (game_created, game_over, game_abandoned)
+Startup probes with tenacity retry for DB and Redis
 ```
 
 Current automated test status:
 
 ```text
-31 tests passed
+47 tests passed
 ```
