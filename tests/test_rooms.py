@@ -154,13 +154,15 @@ def test_get_room_not_found():
 
 
 def test_get_room_returns_game_id_after_link():
-    from app.events.subscriber import _handle_message
     import json as _json
+
+    from app.events.subscriber import _handle_message
 
     created = make_client(1).post("/rooms").json()
     db = TestingSessionLocal()
     try:
-        message = {"type": "message", "data": _json.dumps({"event": "game_created", "game_id": 42, "room_id": created["id"]})}
+        payload = {"event": "game_created", "game_id": 42, "room_id": created["id"]}
+        message = {"type": "message", "data": _json.dumps(payload)}
         with patch("app.events.subscriber.SessionLocal", TestingSessionLocal):
             _handle_message(message)
     finally:

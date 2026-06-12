@@ -56,7 +56,7 @@ def get_room(room_id: int) -> Room | None:
 
 def test_game_over_deletes_room():
     room_id = make_room(status="active")
-    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})
+    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})  # noqa: E501
     assert get_room(room_id) is None
 
 
@@ -131,8 +131,8 @@ def test_unknown_room_handled_gracefully():
 def test_game_over_second_instance_idempotent():
     """Room already deleted by another instance — second processing is a no-op."""
     room_id = make_room(status="active")
-    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})
-    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})
+    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})  # noqa: E501
+    send_event({"event": "game_over", "game_id": 5, "room_id": room_id, "winner": "white"})  # noqa: E501
     assert get_room(room_id) is None
 
 
