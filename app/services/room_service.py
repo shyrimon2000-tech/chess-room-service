@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy.orm import Session
 
 from app.events.publisher import publish_room_activated, publish_room_created
@@ -11,6 +13,8 @@ from app.repositories.room_repo import (
     get_room_by_id,
     get_room_by_id_for_update,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_rooms(db: Session) -> list[Room]:
@@ -26,6 +30,7 @@ def create_new_room(db: Session, user_id: int, username: str) -> tuple[Room, boo
     room = create_room(db, user_id, username)
     assert room.white_player_id is not None
     publish_room_created(room.id, room.white_player_id)
+    logger.info("Room %s created by user %s", room.id, user_id)
     return room, True
 
 
@@ -41,6 +46,7 @@ def quick_join_or_create_room(db: Session, user_id: int, username: str) -> Room:
         room = create_room(db, user_id, username)
         assert room.white_player_id is not None
         publish_room_created(room.id, room.white_player_id)
+        logger.info("Room %s created via quick join by user %s", room.id, user_id)
         return room
 
     available_room.black_player_id = user_id
@@ -57,7 +63,7 @@ def quick_join_or_create_room(db: Session, user_id: int, username: str) -> Room:
         available_room.white_player_id,
         available_room.black_player_id,
     )
-
+    logger.info("Room %s activated (quick join) by user %s", available_room.id, user_id)
     return available_room
 
 
@@ -90,9 +96,11 @@ def join_room(
         assert room.white_player_id is not None
         assert room.black_player_id is not None
         publish_room_activated(room.id, room.white_player_id, room.black_player_id)
+        logger.info("Room %s activated: user %s joined as black", room.id, user_id)
         return room, "player"
 
     if room.status == "active":
+        logger.info("User %s joined room %s as spectator", user_id, room_id)
         return room, "spectator"
 
     raise ValueError("Room is not available")
@@ -107,4 +115,5 @@ def close_room(db: Session, room_id: int) -> str:
 
     delete_room(db, room)
 
+    logger.info("Room %s closed by admin", room_id)
     return "Room closed"
