@@ -123,6 +123,8 @@ Response:
     "status": "waiting",
     "white_player_id": 7,
     "black_player_id": null,
+    "white_player_nickname": "alex",
+    "black_player_nickname": null,
     "game_id": null,
     "created_at": "2026-06-01T10:00:00"
   }
