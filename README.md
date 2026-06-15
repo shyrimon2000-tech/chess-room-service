@@ -8,9 +8,9 @@ This service handles room creation, quick matchmaking, player and spectator join
 
 ## Badges
 
-Main: [![CI Main](https://github.com/shyrimon2000-tech/chess-room-service/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/shyrimon2000-tech/chess-room-service/actions)
-
 Dev: [![CI Dev](https://github.com/shyrimon2000-tech/chess-room-service/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/shyrimon2000-tech/chess-room-service/actions)
+
+Pull Request: [![CI PR](https://github.com/shyrimon2000-tech/chess-room-service/actions/workflows/ci.yml/badge.svg?event=pull_request)](https://github.com/shyrimon2000-tech/chess-room-service/actions)
 
 ---
 
