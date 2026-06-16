@@ -29,7 +29,8 @@ Pull Request: [![CI PR](https://github.com/shyrimon2000-tech/chess-room-service/
 - MySQL database persistence
 - SQLAlchemy ORM
 - Alembic database migrations
-- Automated tests with pytest
+- Unit tests with pytest (47 tests)
+- End-to-end tests with Playwright (34 tests across 9 scenarios)
 
 ---
 
@@ -47,6 +48,7 @@ Pull Request: [![CI PR](https://github.com/shyrimon2000-tech/chess-room-service/
 - Pydantic Settings
 - tenacity
 - pytest
+- Playwright (e2e)
 - Docker
 - Docker Compose
 
@@ -76,11 +78,62 @@ alembic/
 ├── versions/
 └── env.py
 
-tests/
+tests/                        # unit tests
 ├── test_rooms.py
 ├── test_publisher.py
 └── test_subscriber.py
+
+e2e_tests/                    # end-to-end tests (Playwright)
+├── chess_test1.py            # T1–T4:   resign flow
+├── chess_test2.py            # T5–T8:   disconnect + reconnect within 30 s
+├── chess_test3.py            # T9–T12:  disconnect timeout → game abandoned
+├── chess_test4.py            # T13–T16: resign button visibility + room cleanup
+├── chess_test5.py            # T17–T20: quick join + spectator join
+├── chess_test6.py            # T21–T23: auth flows (unauth redirect, bad creds, logout)
+├── chess_test7.py            # T24–T27: spectator perspective + board updates
+├── chess_test8.py            # T28–T31: board interaction + turn guard
+├── chess_test9.py            # T32–T34: return-to-game panel
+├── helpers.py
+├── cleanup.py
+└── debug_ws.py
+
+docker-compose.e2e.yml        # full multi-service stack for e2e
+nginx.dev.conf                # nginx reverse-proxy config for e2e frontend
+pytest-e2e.ini                # pytest config for e2e suite
+requirements-e2e.txt          # playwright + pytest-playwright
+e2e_versions.env              # pinned versions of services pulled from GHCR
+.env.e2e                      # shared env for all services in e2e stack
 ```
+
+---
+
+## CI Pipeline
+
+```text
+push to dev:
+  lint → type-check → unit tests → docker build
+
+pull_request to main  /  tag push (x.y.z):
+  lint → type-check → unit tests → docker build → e2e tests
+
+tag push only:
+  … → e2e tests → publish to GHCR
+```
+
+### Jobs
+
+| Job | Trigger | Description |
+|---|---|---|
+| `lint` | push dev, PR, tag | ruff check on `app/` and `tests/` |
+| `type-check` | push dev, PR, tag | mypy on `app/` |
+| `test` | push dev, PR, tag | pytest unit tests |
+| `docker-build` | push dev, PR, tag | builds image, saves as artifact |
+| `e2e` | PR to main, tag | spins up full stack, runs 34 Playwright tests |
+| `publish` | tag only | pushes versioned image to `ghcr.io` after e2e passes |
+
+### E2E stack
+
+The e2e job loads the locally built `chess-room-service` image from the artifact and pulls `chess-auth-service`, `chess-game-service`, and `chess-frontend-service` from GHCR at the versions pinned in `e2e_versions.env`. This means every PR tests the new room-service code against the real deployed versions of the other services.
 
 ---
 
@@ -421,7 +474,7 @@ Notes:
 
 - Requires a running MySQL instance and Redis instance reachable from the local machine.
 - `requirements.txt` contains production dependencies only.
-- `requirements-dev.txt` includes `requirements.txt` and adds `pytest` for running tests.
+- `requirements-dev.txt` includes `requirements.txt` and adds `pytest`, `mypy`, `ruff` for development.
 
 ---
 
@@ -444,15 +497,15 @@ Cross-service foreign keys are intentionally avoided. `white_player_id`, `black_
 
 ---
 
-## Automated Tests
+## Unit Tests
 
-Run tests:
+Run:
 
 ```bash
 pytest tests/ -v
 ```
 
-Test coverage includes:
+Coverage:
 
 - empty room list
 - waiting room appears in list
@@ -479,7 +532,7 @@ Test coverage includes:
 - publisher swallows Redis error on `room_created`
 - publisher swallows Redis error on `room_activated`
 - `game_created` event stores `game_id` on room
-- `game_created` is idempotent (same value written twice)
+- `game_created` is idempotent
 - `game_created` missing room_id handled gracefully
 - `game_over` event deletes room
 - `game_over` missing room_id handled gracefully
@@ -490,17 +543,78 @@ Test coverage includes:
 - unknown event type ignored
 - invalid JSON handled gracefully
 
-Current test count:
-
 ```text
 47 passed
 ```
 
 ---
 
+## E2E Tests
+
+The e2e suite runs against the full multi-service stack via Playwright. It is executed automatically in CI on every PR to main and before every versioned release.
+
+### Run locally
+
+Start the stack:
+
+```bash
+cat .env.e2e e2e_versions.env > .env.combined
+docker compose -f docker-compose.e2e.yml --env-file .env.combined up -d --wait
+```
+
+Install dependencies and run:
+
+```bash
+pip install -r requirements-e2e.txt
+playwright install chromium --with-deps
+python -m pytest -c pytest-e2e.ini -v
+```
+
+Tear down:
+
+```bash
+docker compose -f docker-compose.e2e.yml --env-file .env.combined down
+```
+
+### Scenarios
+
+| Tests | Scenario |
+|---|---|
+| T1–T4 | Resign flow: game starts, white resigns, both players see correct banners |
+| T5–T8 | Disconnect + reconnect within 30 s: banner shown, hidden on reconnect, game resumes |
+| T9–T12 | Disconnect timeout: opponent wins, game abandoned, room deleted from list |
+| T13–T16 | Resign button visibility: hidden after game over, room absent after cleanup |
+| T17–T20 | Quick join: creates room when none available; joins existing; spectator via explicit join |
+| T21–T23 | Auth flows: unauthenticated redirect, wrong password error, logout clears session |
+| T24–T27 | Spectator: reaches game page, sees white's perspective, no resign button, sees board updates |
+| T28–T31 | Board interaction: legal move highlights, turn guard, move updates both boards |
+| T32–T34 | Return-to-game panel: intentional navigation shows panel, not auto-redirect |
+
+```text
+34 passed
+```
+
+### Service versions
+
+Pinned in `e2e_versions.env`. Update the version of a service to test against a new release:
+
+```env
+AUTH_SERVICE_VERSION=1.0.0
+GAME_SERVICE_VERSION=1.0.0
+FRONTEND_VERSION=1.0.0
+```
+
+The locally built `chess-room-service` image is always used — it is never pulled from the registry during e2e.
+
+---
+
 ## Development Status
 
-Implemented endpoints:
+**Completed.**
+
+All endpoints implemented and tested. CI pipeline fully configured.
+
+### Endpoints
 
 ```text
 GET    /health
@@ -512,22 +626,22 @@ POST   /rooms/{room_id}/join
 DELETE /rooms/{room_id}
 ```
 
-Implemented infrastructure:
+### Infrastructure
 
 ```text
 Dockerfile
-docker-compose.yml
-MySQL container
+docker-compose.yml              local development stack
+docker-compose.e2e.yml          full multi-service e2e stack
+MySQL (room-db)
 Redis (shared with game-service)
+nginx reverse-proxy (e2e)
 Alembic migrations
-pytest test suite
+Unit test suite (pytest) — 47 tests
+E2E test suite (Playwright) — 34 tests
+CI pipeline (GitHub Actions)
+    lint → type-check → unit tests → docker build → e2e → publish
 Redis pub/sub publisher (room_created, room_activated)
 Redis pub/sub subscriber (game_created, game_over, game_abandoned)
 Startup probes with tenacity retry for DB and Redis
-```
-
-Current automated test status:
-
-```text
-47 tests passed
+Docker image published to ghcr.io on versioned tag
 ```
