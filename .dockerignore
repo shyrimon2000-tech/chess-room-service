@@ -1,9 +1,14 @@
 .git
 .gitignore
+.gitattributes
+.github/
 .env
+.env.example
 .claude
 CLAUDE.md
 README.md
+pyproject.toml
+requirements-dev.txt
 tests/
 venv/
 .venv/
@@ -21,3 +26,13 @@ build/
 .DS_Store
 docker-compose.yml
 docker-compose.yaml
+docker-compose.e2e.yml
+
+# E2E
+.env.e2e
+.env.combined
+e2e_versions.env
+e2e_tests/
+nginx.dev.conf
+pytest-e2e.ini
+requirements-e2e.txt
