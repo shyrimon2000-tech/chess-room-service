@@ -20,4 +20,10 @@ dist/
 build/
 *.log
 .auth.env
+.mypy_cache/
+.coverage
+htmlcov/
 .claude/settings.local.json
+.env.combined
+e2e_tests/.reg_times.json
+image.tar.gz
