@@ -30,9 +30,9 @@ def test_T22_login_with_wrong_password_shows_error(browser_ctx):
     # register then try to login with wrong password
     reg(page, P1)
 
-    # logout first so we're back at login page
-    page.evaluate("localStorage.clear()")
-    page.goto(BASE)
+    # clear token and navigate atomically — prevents race with rooms.js polling guard
+    page.evaluate("localStorage.clear(); window.location.href = '/index.html';")
+    page.wait_for_url('**/index.html', timeout=10000)
 
     page.fill('#login-email', P1['email'])
     page.fill('#login-password', 'wrongpassword')
